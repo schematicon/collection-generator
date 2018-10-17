@@ -1,0 +1,30 @@
+{
+	"name": "schematicon/collection-generator",
+	"type": "library",
+	"description": "Schematicon Doc Generator is generator for Postman Collection JSON files.",
+	"keywords": ["postman", "generator", "api", "structure", "schematicon"],
+	"homepage": "https://github.com/schematicon/collection-generator",
+	"license": "MIT",
+	"authors": [
+		{ "name": "Schematicon Project", "homepage": "https://github.com/schematicon/collection-generator/graphs/contributors" }
+	],
+	"support": {
+		"issues": "https://github.com/schematicon/collection-generator/issues"
+	},
+	"require": {
+		"php": ">=7.0",
+		"nette/http": "~2.4",
+		"nette/utils": "~2.4"
+	},
+	"require-dev": {
+	},
+	"autoload": {
+		"psr-4": { "Schematicon\\CollectionGenerator\\": "src/" }
+	},
+	"bin": ["apidoc"],
+	"extra": {
+		"branch-alias": {
+			"dev-master": "1.0-dev"
+		}
+	}
+}
