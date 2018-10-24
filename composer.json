@@ -12,7 +12,7 @@
 		"issues": "https://github.com/schematicon/collection-generator/issues"
 	},
 	"require": {
-		"php": ">=7.0",
+		"php": ">=7.1",
 		"nette/http": "~2.4",
 		"nette/utils": "~2.4"
 	},
