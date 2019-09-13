@@ -9,6 +9,7 @@
 namespace Schematicon\CollectionGenerator;
 
 use Datetime;
+use DateTimeImmutable;
 use Nette\Http\IRequest;
 use Nette\Http\Url;
 use Nette\Utils\Json;
@@ -22,18 +23,6 @@ class PostmanGenerator
 	private const TYPE_DATE = 'date';
 	private const TYPE_DATETIME = 'datetime';
 	private const TYPE_LOCALDATETIME = 'localdatetime';
-
-	const SCALAR_TYPES = [
-		'string',
-		'string|null',
-		'float',
-		'float|null',
-		'int',
-		'int|null',
-		'bool',
-		'email',
-		'email|null',
-	];
 
 	private const REQUEST_METHODS = [
 		IRequest::GET,
@@ -52,7 +41,7 @@ class PostmanGenerator
 	private $baseHeaders;
 
 
-	public function generate(array $apiSpecification)
+	public function generate(array $apiSpecification): string
 	{
 		$this->baseUrl = Strings::trim($apiSpecification['prefix']['url'], '/');
 		$this->baseUrl = $this->replaceInlineParameters($this->baseUrl, $apiSpecification['prefix']['parameters']);
@@ -186,85 +175,80 @@ class PostmanGenerator
 	}
 
 
-	private function buildMap(array $map): array
+	private function buildData(array $schema)
+	{
+		$types = explode('|', $schema['type'] ?? '');
+
+		if (isset($schema['reference'])) {
+			return $this->buildData($this->resources[$schema['reference']]);
+
+		} elseif (isset($schema['oneOf'])) {
+			return $this->buildData($schema['oneOf']);
+
+		} elseif (isset($schema['allOf']) || isset($schema['anyOf'])) {
+			throw new \LogicException('Not implemented yet for data: ' . var_export($schema, true));
+
+		} elseif (isset($schema['enum'])) {
+			return reset($schema['enum']);
+
+		} elseif (in_array('date', $types, true)) {
+			return $this->buildDateTime($schema, self::TYPE_DATE);
+
+		} elseif (in_array('datetime', $types, true)) {
+			return $this->buildDateTime($schema, self::TYPE_DATETIME);
+
+		} elseif (in_array('localdatetime', $types, true)) {
+			return $this->buildDateTime($schema, self::TYPE_LOCALDATETIME);
+
+		} elseif (in_array('array', $types, true)) {
+			return $this->buildArray($schema);
+
+		} elseif (in_array('map', $types, true)) {
+			return $this->buildMap($schema);
+
+		} else {
+			return $schema['sample'] ?? $schema['type'] ?? null;
+		}
+	}
+
+
+	private function buildMap(array $schema): array
 	{
 		$result = [];
-
-		foreach ($map['properties'] as $name => $values) {
-			if ($values['type'] === 'array') {
-				$result[$name] = $this->buildArray($values);
-			} elseif (is_array($map) && reset(array_keys($values)) === 'reference') {
-				$result[$name] = $this->buildData($this->resources[$values['reference']]);
-			} elseif ($values['type'] === 'map' || $values['type'] === 'map|null') {
-				$result[$name] = $this->buildMap($values);
-			} elseif (reset(array_keys($values)) === 'oneOf') {
-				$result[$name] = $this->buildData($values);
-			} elseif (in_array($values['type'], self::SCALAR_TYPES, true)) {
-				$result[$name] = $values['sample'] ?? null;
-			} elseif ($values['type'] === 'date' || $values['type'] === 'date|null') {
-				$result[$name] = $this->buildDateTime($values, self::TYPE_DATE);
-			} elseif ($values['type'] === 'datetime' || $values['type'] === 'datetime|null') {
-				$result[$name] = $this->buildDateTime($values, self::TYPE_DATETIME);
-			} elseif ($values['type'] === 'localdatetime' || $values['type'] === 'localdatetime|null') {
-				$result[$name] = $this->buildDateTime($values, self::TYPE_LOCALDATETIME);
-			} elseif (reset(array_keys($values)) === 'enum') {
-				$result[$name] = $values['sample'] ?? reset($values['enum']);
-			} elseif (Strings::startsWith($values['type'], 'null')) {
-				$result[$name] = null;
-			} else {
-				throw new \Exception('Not implemented yet for data: ' . var_export($values, true));
-			}
+		foreach ($schema['properties'] as $name => $propertySchema) {
+			$result[$name] = $this->buildData($propertySchema);
 		}
 		return $result;
 	}
 
 
-	private function buildArray(array $array): array
+	private function buildArray(array $schema): array
 	{
-		$result = [];
-		$item = $array['item'];
-		if ($item['type'] === 'map' || $item['type'] === 'map|null') {
-			$result[] = $this->buildMap($item);
-		}
-		return $result;
-	}
-
-
-	private function buildData(?array $data): ?array
-	{
-
-		if ($data === null) {
-			return null;
-		} elseif ($data['type'] === 'map') {
-			return $this->buildMap($data);
-		} elseif ($data['type'] === 'array') {
-			return $this->buildArray($data);
-		} elseif (is_array($data) && reset(array_keys($data)) === 'reference') {
-			return $this->buildData($this->resources[$data['reference']]);
-		} elseif (is_array($data) && reset(array_keys($data)) === 'oneOf') {
-			return $this->buildData(reset($data['oneOf']));
-		}
-
-		throw new \Exception('Not implemented yet for data: ' . var_export($data, true));
+		$itemSchema = $schema['item'];
+		return [$this->buildData($itemSchema)];
 	}
 
 
 	private function buildDateTime(array $datetime, string $type): string
 	{
-		$sample = $datetime['sample'] ?? null;
+		$sample = $datetime['sample'] ?? 'now';
 
-		if (!$sample instanceof DateTime) {
-			$sample = new DateTime();
-		} elseif (is_string($sample)) {
-			return $sample;
+		if (!$sample instanceof DateTimeImmutable) {
+			try {
+				$sample = new DateTimeImmutable($sample);
+			} catch (\Exception $e) {
+				$sample = new DateTimeImmutable();
+			}
 		}
 
 		if ($type === self::TYPE_DATE) {
 			return $sample->format('Y-m-d');
 		} elseif ($type === self::TYPE_LOCALDATETIME) {
 			return $sample->format('Y-m-d\TH:i:s');
+		} elseif ($type === self::TYPE_DATETIME) {
+			return $sample->format(DateTime::ISO8601);
+		} else {
+			throw new \LogicException();
 		}
-
-		return $sample->format(DateTime::ISO8601);
 	}
 }
