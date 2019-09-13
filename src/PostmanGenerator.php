@@ -118,7 +118,7 @@ class PostmanGenerator
 						'path' => explode('/', Strings::trim($endpointUrl->getPath(), '/')),
 						'query' => $this->buildParameters($parameters, $path),
 					],
-					'body' => $this->buildBody($values['request'] ?? []),
+					'body' => $this->buildBody($values['request']['schema'] ?? []),
 				],
 			];
 		}
@@ -175,9 +175,9 @@ class PostmanGenerator
 	}
 
 
-	private function buildBody(array $request): ?array
+	private function buildBody(array $schema): ?array
 	{
-		$data = $this->buildData($request['schema']);
+		$data = $this->buildData($schema);
 
 		return [
 			'mode' => 'raw',
